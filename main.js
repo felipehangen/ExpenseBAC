@@ -291,6 +291,9 @@ debugBtn?.addEventListener('click', () => {
 });
 
 const analyzeBtn = document.getElementById('analyze-btn');
+const aiInsightsContent = document.getElementById('ai-insights-content');
+const clearKeyBtn = document.getElementById('clear-key-btn');
+const aiInsightsPanel = document.getElementById('ai-insights-panel');
 
 async function getAIInsights() {
   let apiKey = localStorage.getItem('gemini_api_key');
