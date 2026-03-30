@@ -18,7 +18,6 @@ const dashboard = document.getElementById('dashboard');
 let firstRawEmail = "";
 let globalTransactions = []; // Store globally for Gemini
 
-const transactionList = document.getElementById('transaction-list');
 const totalAmountEl = document.getElementById('total-amount');
 const transactionCountEl = document.getElementById('transaction-count');
 
@@ -93,73 +92,92 @@ async function fetchExpenses() {
   try {
     const currentYear = new Date().getFullYear();
     // Broaden the search query to ensure we catch everything
-    const query = encodeURIComponent(`notificacionesbaccr.com`);
+    const query = encodeURIComponent(`notificacionesbaccr.com after:${currentYear}/01/01`);
     
     console.log("Searching with query:", decodeURIComponent(query));
 
-    // 1. Fetch message list
-    const listRes = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${query}&maxResults=50`, {
-      headers: { Authorization: `Bearer ${accessToken}` }
-    });
-    
-    const listData = await listRes.json();
-    console.log("Found messages:", listData.messages?.length || 0);
-    
-    if (!listRes.ok || listData.error) {
-      firstRawEmail = "GMAIL API ERROR: " + JSON.stringify(listData, null, 2);
-      showState('empty');
-      return;
+    let allMessages = [];
+    let pageToken = '';
+    let pageCount = 0;
+
+    // 1. Fetch message list (Paginated, max 10 pages / 500 emails to prevent freezing)
+    while (pageCount < 10) {
+      const ptParam = pageToken ? `&pageToken=${pageToken}` : '';
+      const listRes = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${query}&maxResults=50${ptParam}`, {
+        headers: { Authorization: `Bearer ${accessToken}` }
+      });
+      
+      const listData = await listRes.json();
+      
+      if (!listRes.ok || listData.error) {
+        firstRawEmail = "GMAIL API ERROR: " + JSON.stringify(listData, null, 2);
+        showState('empty');
+        return;
+      }
+
+      if (listData.messages) {
+        allMessages = allMessages.concat(listData.messages);
+      }
+
+      if (listData.nextPageToken) {
+        pageToken = listData.nextPageToken;
+        pageCount++;
+        document.getElementById('loading-text').innerText = `Scanning emails (found ${allMessages.length})...`;
+      } else {
+        break;
+      }
     }
 
-    if (!listData.messages || listData.messages.length === 0) {
+    if (allMessages.length === 0) {
       firstRawEmail = "Query returned 0 results. Query was: " + decodeURIComponent(query);
       showState('empty');
       return;
     }
 
-    // 2. Fetch full message details concurrently
-    const messagePromises = listData.messages.map(msg => 
-      fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${msg.id}`, {
-        headers: { Authorization: `Bearer ${accessToken}` }
-      }).then(res => res.json())
-    );
-
-    const messages = await Promise.all(messagePromises);
+    // 2. Fetch full message details in batches
     const transactions = [];
+    const chunkSize = 20;
 
-    // 3. Parse and extract
-    messages.forEach(msg => {
-      if (!msg || !msg.payload) {
-         console.warn("Skipping message due to missing payload:", msg);
-         return;
-      }
-      const payload = msg.payload;
-      let bodyData = '';
+    for (let i = 0; i < allMessages.length; i += chunkSize) {
+      document.getElementById('loading-text').innerText = `Parsing emails (${i}/${allMessages.length})...`;
+      const chunk = allMessages.slice(i, i + chunkSize);
       
-      // The body could be in parts or in body.data
-      if (payload.parts) {
-        const htmlPart = payload.parts.find(p => p.mimeType === 'text/html');
-        const textPart = payload.parts.find(p => p.mimeType === 'text/plain');
-        const part = htmlPart || textPart || payload.parts[0];
-        if (part && part.body && part.body.data) {
-          bodyData = part.body.data;
+      const messagePromises = chunk.map(msg => 
+        fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${msg.id}`, {
+          headers: { Authorization: `Bearer ${accessToken}` }
+        }).then(res => res.json()).catch(e => null) // catch network failure on individual request
+      );
+
+      const messages = await Promise.all(messagePromises);
+
+      messages.forEach(msg => {
+        if (!msg || !msg.payload) return;
+        
+        const payload = msg.payload;
+        let bodyData = '';
+        
+        if (payload.parts) {
+          const htmlPart = payload.parts.find(p => p.mimeType === 'text/html');
+          const textPart = payload.parts.find(p => p.mimeType === 'text/plain');
+          const part = htmlPart || textPart || payload.parts[0];
+          if (part && part.body && part.body.data) {
+            bodyData = part.body.data;
+          }
+        } else if (payload.body && payload.body.data) {
+          bodyData = payload.body.data;
         }
-      } else if (payload.body && payload.body.data) {
-        bodyData = payload.body.data;
-      }
 
-      const decodedHtml = decodeBase64URL(bodyData);
-      if (!firstRawEmail) {
-         firstRawEmail = decodedHtml; // Save for debugging
-      }
-      
-      const tx = extractTransactionDetails(decodedHtml);
-      if (tx && tx.montoStr !== "CRC 0.00") {
-        transactions.push(tx);
-      } else {
-        console.warn("Failed to parse transaction from message:", msg.id);
-      }
-    });
+        const decodedHtml = decodeBase64URL(bodyData);
+        if (!firstRawEmail) {
+           firstRawEmail = decodedHtml; 
+        }
+        
+        const tx = extractTransactionDetails(decodedHtml);
+        if (tx && tx.montoStr !== "CRC 0.00") {
+          transactions.push(tx);
+        }
+      });
+    }
 
     console.log("Successfully parsed transactions:", transactions.length);
 
@@ -244,23 +262,7 @@ function renderDashboard(transactions) {
   totalAmountEl.textContent = `${currency} ${total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   transactionCountEl.textContent = `${transactions.length} transactions`;
 
-  // Render List
-  transactionList.innerHTML = '';
-  transactions.forEach(tx => {
-    const li = document.createElement('li');
-    li.className = 'transaction-item';
-    li.innerHTML = `
-      <div class="tx-details">
-        <span class="tx-merchant">${tx.comercio}</span>
-        <span class="tx-date">${tx.fecha}</span>
-      </div>
-      <div class="tx-details" style="align-items: flex-end;">
-        <span class="tx-amount">${tx.montoStr}</span>
-        <span class="tx-type">${tx.tipo}</span>
-      </div>
-    `;
-    transactionList.appendChild(li);
-  });
+  // We are not rendering the global transaction list anymore to save screen space and focus on category analysis.
 
   showState('dashboard');
 }
@@ -288,12 +290,16 @@ debugBtn?.addEventListener('click', () => {
   debugArea.value = firstRawEmail || "No emails were returned from Gmail!"; 
 });
 
-const aiInsightsBtn = document.getElementById('ai-insights-btn');
-const aiInsightsPanel = document.getElementById('ai-insights-panel');
-const aiInsightsContent = document.getElementById('ai-insights-content');
-const clearKeyBtn = document.getElementById('clear-key-btn');
+const analyzeBtn = document.getElementById('analyze-btn');
+const catInput = document.getElementById('category-input');
 
 async function getAIInsights() {
+  const categoryStr = catInput.value.trim();
+  if (!categoryStr) {
+    alert("Please type a category to analyze first!");
+    return;
+  }
+
   let apiKey = localStorage.getItem('gemini_api_key');
   if (!apiKey) {
     apiKey = prompt("Please securely paste your Gemini API Key (from aistudio.google.com/app/apikey). It will only be stored locally on your device.");
@@ -301,20 +307,20 @@ async function getAIInsights() {
     localStorage.setItem('gemini_api_key', apiKey.trim());
   }
 
-  aiInsightsPanel.classList.remove('hidden');
   aiInsightsContent.innerHTML = '<div class="spinner" style="width:24px; height:24px; margin: 0 auto;"></div><p style="text-align:center; color: var(--text-muted)">Gemini is analyzing...</p>';
-  aiInsightsBtn.disabled = true;
+  analyzeBtn.disabled = true;
 
   try {
     const txSummary = globalTransactions.map(tx => `${tx.fecha} | ${tx.comercio} | ${tx.montoStr}`).join('\\n');
     
-    const promptText = `I have the following credit card transactions from my bank for this year:\n\n${txSummary}\n\nPlease analyze this spending. Give me my top spending categories, total amounts spent per category, and write a 2-sentence summary of my spending habits. Format the response cleanly using HTML tags (like <ul>, <li>, <strong>, <h3>) so I can display it directly in my web app. DO NOT include Markdown backticks or the \`\`\`html prefix.`;
+    const promptText = `I have the following credit card transactions from my bank for this year:\\n\\n${txSummary}\\n\\nFilter ALL these transactions and analyze ONLY the ones that logically belong to the user's requested category: "${categoryStr}". Ensure you match merchant names logically (e.g. if category is Restaurants, match McDonalds, Taco Bell, etc). Output strictly in this exact valid JSON format: { "summary": "1 sentence describing spending behavior for this category", "months": [ { "month": "January", "total": 120.00, "transactions": [ {"fecha":"...","comercio":"...","montoStr":"..."} ] } ] }`;
 
     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        contents: [{ parts: [{ text: promptText }] }]
+        contents: [{ parts: [{ text: promptText }] }],
+        generationConfig: { responseMimeType: "application/json" }
       })
     });
 
@@ -327,21 +333,50 @@ async function getAIInsights() {
     }
 
     const data = await response.json();
-    let text = data.candidates?.[0]?.content?.parts?.[0]?.text || "No insights could be generated.";
+    let jsonText = data.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
     
-    // Strip markdown formatting if Gemini includes it
-    text = text.replace(/```html/g, '').replace(/```/g, '');
-
-    aiInsightsContent.innerHTML = text;
+    const result = JSON.parse(jsonText);
+    
+    let html = `
+      <div style="background:var(--bg-color); border:1px solid var(--border); border-radius:var(--radius-md); padding:16px; margin-bottom:16px;">
+        <p style="font-weight:600; color:var(--text-main); margin-bottom:8px;">AI Summary</p>
+        <p style="color:var(--text-muted);">${result.summary || "No summary available."}</p>
+      </div>
+    `;
+    
+    if (result.months && result.months.length > 0) {
+      result.months.forEach(m => {
+        html += `
+        <details style="background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-md); margin-bottom:8px; padding:12px; cursor:pointer;">
+          <summary style="font-weight:600; display:flex; justify-content:space-between; outline:none; color:var(--primary);">
+            <span>${m.month}</span>
+            <span>$${parseFloat(m.total).toFixed(2)}</span>
+          </summary>
+          <div style="margin-top:12px; padding-top:12px; border-top:1px dashed var(--border);">
+            ${m.transactions.map(t => `
+               <div style="display:flex; justify-content:space-between; font-size:13px; margin-bottom:8px; color:var(--text-muted);">
+                 <span>${t.fecha} - ${t.comercio}</span>
+                 <strong style="color:var(--text-main)">${t.montoStr}</strong>
+               </div>
+            `).join('')}
+          </div>
+        </details>
+        `;
+      });
+    } else {
+       html += `<p style="color:var(--text-muted);">No transactions found for this category.</p>`;
+    }
+    
+    aiInsightsContent.innerHTML = html;
   } catch (err) {
     console.error(err);
     aiInsightsContent.innerHTML = `<p style="color:var(--primary)">Error: ${err.message}</p>`;
   } finally {
-    aiInsightsBtn.disabled = false;
+    analyzeBtn.disabled = false;
   }
 }
 
-aiInsightsBtn?.addEventListener('click', getAIInsights);
+analyzeBtn?.addEventListener('click', getAIInsights);
 clearKeyBtn?.addEventListener('click', () => {
    localStorage.removeItem('gemini_api_key');
    aiInsightsPanel.classList.add('hidden');

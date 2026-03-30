@@ -47,18 +47,21 @@
             <h3>Total Spent (YTD)</h3>
             <div id="total-amount" class="total-amount">¢0.00</div>
             <p id="transaction-count" class="transaction-count">0 transactions</p>
-            <button id="ai-insights-btn" class="auth-btn" style="margin-top: 20px; background: #8b5cf6; width: 100%;">✨ Get AI Insights</button>
           </div>
 
-          <div id="ai-insights-panel" class="summary-card hidden" style="border-color: #8b5cf6; text-align: left;">
-            <h3 style="color: #8b5cf6; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between;">
-              Gemini Insights
-              <button id="clear-key-btn" style="background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:12px; text-decoration:underline; font-weight: normal;">Reset API Key</button>
-            </h3>
-            <div id="ai-insights-content" style="font-size: 14px; line-height: 1.6;"></div>
+          <div class="summary-card" style="text-align: left; padding: 20px; border-color: #8b5cf6;">
+            <h3 style="color: #8b5cf6; margin-bottom: 8px;">Category Analysis (AI)</h3>
+            <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;">Type a category (e.g., "Restaurants", "Gas", "Groceries") to see your monthly spending trends.</p>
+            <div style="display: flex; gap: 8px;">
+               <input type="text" id="category-input" placeholder="e.g. Subscriptions" style="flex:1; padding: 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-color); color: var(--text-main);" />
+               <button id="analyze-btn" class="auth-btn" style="background: #8b5cf6;">Analyze</button>
+            </div>
+            
+            <div id="ai-insights-content" style="margin-top: 20px; font-size: 14px; line-height: 1.6;"></div>
+            <div style="text-align:right; margin-top: 10px;">
+              <button id="clear-key-btn" style="background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:12px; text-decoration:underline;">Reset API Key</button>
+            </div>
           </div>
-          
-          <ul id="transaction-list" class="transaction-list"></ul>
         </div>
       </main>
     </div>
