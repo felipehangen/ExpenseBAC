@@ -67,14 +67,17 @@ async function fetchExpenses() {
   try {
     const currentYear = new Date().getFullYear();
     // Search BAC transactional emails for the current year
-    const query = encodeURIComponent(`from:notificaci\u00f3n@notificacionesbaccr.com subject:"Notificaci\u00f3n de transacci\u00f3n" after:${currentYear}/01/01`);
+    const query = encodeURIComponent(`from:notificacion@notificacionesbaccr.com "Notificación de transacción" after:${currentYear}/01/01`);
     
+    console.log("Searching with query:", decodeURIComponent(query));
+
     // 1. Fetch message list
     const listRes = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${query}&maxResults=50`, {
       headers: { Authorization: `Bearer ${accessToken}` }
     });
     
     const listData = await listRes.json();
+    console.log("Found messages:", listData.messages?.length || 0);
     
     if (!listData.messages || listData.messages.length === 0) {
       showState('empty');
@@ -111,10 +114,14 @@ async function fetchExpenses() {
       const decodedHtml = decodeBase64URL(bodyData);
       
       const tx = extractTransactionDetails(decodedHtml);
-      if (tx && tx.monto) {
+      if (tx && tx.montoStr !== "CRC 0.00") {
         transactions.push(tx);
+      } else {
+        console.warn("Failed to parse transaction from message:", msg.id);
       }
     });
+
+    console.log("Successfully parsed transactions:", transactions.length);
 
     if (transactions.length === 0) {
       showState('empty');
