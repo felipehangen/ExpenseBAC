@@ -4,7 +4,8 @@ const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 const SCOPES = 'https://www.googleapis.com/auth/gmail.readonly';
 
 let tokenClient;
-let accessToken = null;
+let accessToken = localStorage.getItem('bac_access_token');
+let tokenExpiry = localStorage.getItem('bac_token_expiry');
 
 const authBtn = document.getElementById('auth-btn');
 const welcomeState = document.getElementById('welcome-state');
@@ -39,12 +40,29 @@ function initGIS() {
     callback: (tokenResponse) => {
       if (tokenResponse && tokenResponse.access_token) {
         accessToken = tokenResponse.access_token;
+        // Token expires in 3600 seconds, store expiry time
+        const expiry = new Date().getTime() + (3500 * 1000);
+        localStorage.setItem('bac_access_token', accessToken);
+        localStorage.setItem('bac_token_expiry', expiry);
+        
         authBtn.textContent = 'Logout';
         authBtn.classList.add('logout');
         fetchExpenses();
       }
     },
   });
+
+  // Auto-login if we have a valid token
+  if (accessToken && tokenExpiry && new Date().getTime() < parseInt(tokenExpiry)) {
+    authBtn.textContent = 'Logout';
+    authBtn.classList.add('logout');
+    fetchExpenses();
+  } else {
+    // Clear expired
+    accessToken = null;
+    localStorage.removeItem('bac_access_token');
+    localStorage.removeItem('bac_token_expiry');
+  }
 }
 
 function handleAuthClick() {
@@ -52,6 +70,8 @@ function handleAuthClick() {
     // Logout
     google.accounts.id.disableAutoSelect();
     accessToken = null;
+    localStorage.removeItem('bac_access_token');
+    localStorage.removeItem('bac_token_expiry');
     authBtn.textContent = 'Login';
     authBtn.classList.remove('logout');
     showState('welcome');
@@ -67,7 +87,7 @@ async function fetchExpenses() {
   try {
     const currentYear = new Date().getFullYear();
     // Search BAC transactional emails for the current year
-    const query = encodeURIComponent(`from:notificacion@notificacionesbaccr.com "Notificación de transacción" after:${currentYear}/01/01`);
+    const query = encodeURIComponent(`from:notificacion@notificacionesbaccr.com after:${currentYear}/01/01`);
     
     console.log("Searching with query:", decodeURIComponent(query));
 
@@ -148,24 +168,32 @@ function decodeBase64URL(str) {
 function extractTransactionDetails(htmlText) {
   if (!htmlText) return null;
   
-  // Using Regex to extract based on the table structure shown in the screenshot
-  // Example: <td>Comercio:</td><td><b>SUPER LA PERLA</b></td>
-  
+  // Clean HTML to make regex easier (remove newlines inside tags if any)
+  const cleanText = htmlText.replace(/\n/g, ' ');
+
   const extractField = (fieldName) => {
-    // Look for the label followed by the value
-    const regex = new RegExp(`${fieldName}.*?<(?:td|div|span)[^>]*>(?:<[^>]+>)*\\s*(.*?)\\s*(?:<\\/[^>]+>)*\\s*<\\/(?:td|div|span)>`, 'is');
-    const match = htmlText.match(regex);
+    // HTML based match (supports td, th, div, span, p)
+    const regex = new RegExp(`${fieldName}.*?<(?:td|th|div|span|p)[^>]*>(?:<[^>]+>)*\\s*(.*?)\\s*(?:<\\/[^>]+>)*\\s*<\\/(?:td|th|div|span|p)>`, 'is');
+    const match = cleanText.match(regex);
     if (match && match[1]) {
-        // Strip out any remaining HTML tags and trim
         return match[1].replace(/<[^>]+>/g, '').trim();
     }
+    
+    // Plain text fallback (e.g., Monto: CRC 3,250.00)
+    const plainRegex = new RegExp(`${fieldName}\\s*(.*?)(?:\\n|<br|\\t|$)`, 'is');
+    const plainMatch = cleanText.match(plainRegex);
+    if (plainMatch && plainMatch[1]) {
+        return plainMatch[1].replace(/<[^>]+>/g, '').trim();
+    }
+
     return null;
   };
 
-  const comercio = extractField('Comercio:') || "Unknown Merchant";
-  const fecha = extractField('Fecha:') || "";
+  const comercio = extractField('Comercio:') || extractField('Comercio') || "Unknown Merchant";
+  const fecha = extractField('Fecha:') || extractField('Fecha') || "";
   const tipo = extractField('Tipo de Transacci[oó]n:') || "COMPRA";
-  const montoStr = extractField('Monto:') || "CRC 0.00";
+  const montoStr = extractField('Monto:') || extractField('Monto') || "CRC 0.00";
+  
   
   // Clean amount string for number conversion e.g. "CRC 3,250.00" -> 3250.00
   let amountNum = 0;
