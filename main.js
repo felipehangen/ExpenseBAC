@@ -8,6 +8,7 @@ let accessToken = localStorage.getItem('bac_access_token');
 let tokenExpiry = localStorage.getItem('bac_token_expiry');
 
 const authBtn = document.getElementById('auth-btn');
+const logoEl = document.getElementById('logo');
 const welcomeState = document.getElementById('welcome-state');
 const loadingState = document.getElementById('loading');
 const emptyState = document.getElementById('empty-state');
@@ -260,3 +261,4 @@ window.onload = () => {
 };
 
 authBtn.addEventListener('click', handleAuthClick);
+logoEl.addEventListener('click', () => { window.location.reload(); });
