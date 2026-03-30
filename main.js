@@ -129,6 +129,10 @@ async function fetchExpenses() {
 
     // 3. Parse and extract
     messages.forEach(msg => {
+      if (!msg || !msg.payload) {
+         console.warn("Skipping message due to missing payload:", msg);
+         return;
+      }
       const payload = msg.payload;
       let bodyData = '';
       
@@ -168,7 +172,7 @@ async function fetchExpenses() {
 
   } catch (error) {
     console.error("Error fetching emails:", error);
-    alert("Error fetching emails. Check the console.");
+    alert("Error fetching emails: " + error.toString());
     showState('welcome');
   }
 }
