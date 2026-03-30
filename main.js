@@ -291,15 +291,8 @@ debugBtn?.addEventListener('click', () => {
 });
 
 const analyzeBtn = document.getElementById('analyze-btn');
-const catInput = document.getElementById('category-input');
 
 async function getAIInsights() {
-  const categoryStr = catInput.value.trim();
-  if (!categoryStr) {
-    alert("Please type a category to analyze first!");
-    return;
-  }
-
   let apiKey = localStorage.getItem('gemini_api_key');
   if (!apiKey) {
     apiKey = prompt("Please securely paste your Gemini API Key (from aistudio.google.com/app/apikey). It will only be stored locally on your device.");
@@ -307,13 +300,13 @@ async function getAIInsights() {
     localStorage.setItem('gemini_api_key', apiKey.trim());
   }
 
-  aiInsightsContent.innerHTML = '<div class="spinner" style="width:24px; height:24px; margin: 0 auto;"></div><p style="text-align:center; color: var(--text-muted)">Gemini is analyzing...</p>';
+  aiInsightsContent.innerHTML = '<div class="spinner" style="width:24px; height:24px; margin: 0 auto;"></div><p style="text-align:center; color: var(--text-muted)">Gemini is analyzing and categorizing...</p>';
   analyzeBtn.disabled = true;
 
   try {
-    const txSummary = globalTransactions.map(tx => `${tx.fecha} | ${tx.comercio} | ${tx.montoStr}`).join('\\n');
+    const txData = globalTransactions.map((tx, idx) => `${idx}: ${tx.comercio} - ${tx.montoStr}`).join('\\n');
     
-    const promptText = `I have the following credit card transactions from my bank for this year:\\n\\n${txSummary}\\n\\nFilter ALL these transactions and analyze ONLY the ones that logically belong to the user's requested category: "${categoryStr}". Ensure you match merchant names logically (e.g. if category is Restaurants, match McDonalds, Taco Bell, etc). Output strictly in this exact valid JSON format: { "summary": "1 sentence describing spending behavior for this category", "months": [ { "month": "January", "total": 120.00, "transactions": [ {"fecha":"...","comercio":"...","montoStr":"..."} ] } ] }`;
+    const promptText = `Categorize the following bank transactions into EXACTLY one of these categories: "Restaurants", "Groceries", "Shopping", "Hardware Store", "Subscriptions", "Uber Eats", "Transport", "Others".\\n\\nTransactions:\\n${txData}\\n\\nReturn ONLY a valid JSON array mapping the exact index to the chosen category. Example: [{"index": 0, "category": "Groceries"}, {"index": 1, "category": "Restaurants"}]`;
 
     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
       method: 'POST',
@@ -333,38 +326,93 @@ async function getAIInsights() {
     }
 
     const data = await response.json();
-    let jsonText = data.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
+    let jsonText = data.candidates?.[0]?.content?.parts?.[0]?.text || "[]";
+    const mappedCategories = JSON.parse(jsonText);
     
-    const result = JSON.parse(jsonText);
-    
-    let html = `
-      <div style="background:var(--bg-color); border:1px solid var(--border); border-radius:var(--radius-md); padding:16px; margin-bottom:16px;">
-        <p style="font-weight:600; color:var(--text-main); margin-bottom:8px;">AI Summary</p>
-        <p style="color:var(--text-muted);">${result.summary || "No summary available."}</p>
-      </div>
-    `;
-    
-    if (result.months && result.months.length > 0) {
-      result.months.forEach(m => {
-        html += `
-        <details style="background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-md); margin-bottom:8px; padding:12px; cursor:pointer;">
-          <summary style="font-weight:600; display:flex; justify-content:space-between; outline:none; color:var(--primary);">
-            <span>${m.month}</span>
-            <span>$${parseFloat(m.total).toFixed(2)}</span>
-          </summary>
-          <div style="margin-top:12px; padding-top:12px; border-top:1px dashed var(--border);">
-            ${m.transactions.map(t => `
-               <div style="display:flex; justify-content:space-between; font-size:13px; margin-bottom:8px; color:var(--text-muted);">
-                 <span>${t.fecha} - ${t.comercio}</span>
-                 <strong style="color:var(--text-main)">${t.montoStr}</strong>
-               </div>
-            `).join('')}
-          </div>
-        </details>
-        `;
-      });
-    } else {
-       html += `<p style="color:var(--text-muted);">No transactions found for this category.</p>`;
+    const catMap = {};
+    if (Array.isArray(mappedCategories)) {
+       mappedCategories.forEach(item => {
+          catMap[item.index] = item.category;
+       });
+    }
+
+    const categoryGroups = {
+      "Restaurants": { total: 0, months: {} },
+      "Groceries": { total: 0, months: {} },
+      "Shopping": { total: 0, months: {} },
+      "Hardware Store": { total: 0, months: {} },
+      "Subscriptions": { total: 0, months: {} },
+      "Uber Eats": { total: 0, months: {} },
+      "Transport": { total: 0, months: {} },
+      "Others": { total: 0, months: {} }
+    };
+
+    globalTransactions.forEach((tx, idx) => {
+       const cat = catMap[idx] || "Others";
+       
+       // Parse amount from typical CRC or $ strings
+       let val = parseFloat(tx.montoStr.replace(/[^0-9.-]+/g,""));
+       if(isNaN(val)) val = 0;
+       
+       let monthStr = "Unknown";
+       try {
+         const d = new Date(tx.fecha);
+         if (!isNaN(d)) {
+            monthStr = d.toLocaleString('en-US', { month: 'long', year: 'numeric' });
+         } else {
+            monthStr = tx.fecha.split(' ')[0] || "Unknown";
+         }
+       } catch(e){}
+
+       if (categoryGroups[cat]) {
+          categoryGroups[cat].total += val;
+          if (!categoryGroups[cat].months[monthStr]) {
+            categoryGroups[cat].months[monthStr] = { total: 0, txs: [] };
+          }
+          categoryGroups[cat].months[monthStr].total += val;
+          categoryGroups[cat].months[monthStr].txs.push(tx);
+       }
+    });
+
+    let html = '';
+    Object.keys(categoryGroups).forEach(cat => {
+       const group = categoryGroups[cat];
+       if (group.total > 0) {
+         html += `
+         <details style="background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-md); margin-bottom:12px; padding:12px; cursor:pointer;" open>
+            <summary style="font-weight:700; display:flex; justify-content:space-between; outline:none; color:var(--text-main); font-size: 16px;">
+              <span>${cat}</span>
+              <span>¢${group.total.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</span>
+            </summary>
+            <div style="margin-top:12px; padding-top:12px; border-top:1px dashed var(--border);">
+         `;
+         
+         Object.keys(group.months).forEach(mStr => {
+            const mData = group.months[mStr];
+            html += `
+              <details style="margin-bottom:8px; margin-left:8px;">
+                <summary style="font-weight:600; display:flex; justify-content:space-between; outline:none; color:var(--primary); font-size:14px; margin-bottom:6px;">
+                  <span>${mStr}</span>
+                  <span>¢${mData.total.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</span>
+                </summary>
+                <div style="margin-left: 12px; margin-bottom: 12px;">
+                  ${mData.txs.map(t => `
+                     <div style="display:flex; justify-content:space-between; font-size:13px; margin-bottom:8px; color:var(--text-muted);">
+                       <span>${t.fecha} - ${t.comercio}</span>
+                       <strong style="color:var(--text-main)">${t.montoStr}</strong>
+                     </div>
+                  `).join('')}
+                </div>
+              </details>
+            `;
+         });
+         
+         html += `</div></details>`;
+       }
+    });
+
+    if (!html) {
+      html = `<p style="color:var(--text-muted);">No categorized transactions found.</p>`;
     }
     
     aiInsightsContent.innerHTML = html;
