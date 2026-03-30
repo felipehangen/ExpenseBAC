@@ -16,6 +16,8 @@ const debugBtn = document.getElementById('debug-btn');
 const debugArea = document.getElementById('debug-area');
 const dashboard = document.getElementById('dashboard');
 let firstRawEmail = "";
+let globalTransactions = []; // Store globally for Gemini
+
 const transactionList = document.getElementById('transaction-list');
 const totalAmountEl = document.getElementById('total-amount');
 const transactionCountEl = document.getElementById('transaction-count');
@@ -220,6 +222,8 @@ function extractTransactionDetails(htmlText) {
 }
 
 function renderDashboard(transactions) {
+  globalTransactions = transactions;
+  
   // Sort by date (assuming order doesn't need complex parsing, or we just trust email order)
   // Usually Gmail API returns newest first.
   
@@ -275,7 +279,68 @@ window.onload = () => {
 
 authBtn.addEventListener('click', handleAuthClick);
 logoEl.addEventListener('click', () => { window.location.reload(); });
-debugBtn.addEventListener('click', () => { 
+debugBtn?.addEventListener('click', () => { 
   debugArea.style.display = 'block'; 
   debugArea.value = firstRawEmail || "No emails were returned from Gmail!"; 
+});
+
+const aiInsightsBtn = document.getElementById('ai-insights-btn');
+const aiInsightsPanel = document.getElementById('ai-insights-panel');
+const aiInsightsContent = document.getElementById('ai-insights-content');
+const clearKeyBtn = document.getElementById('clear-key-btn');
+
+async function getAIInsights() {
+  let apiKey = localStorage.getItem('gemini_api_key');
+  if (!apiKey) {
+    apiKey = prompt("Please securely paste your Gemini API Key (from aistudio.google.com/app/apikey). It will only be stored locally on your device.");
+    if (!apiKey) return;
+    localStorage.setItem('gemini_api_key', apiKey.trim());
+  }
+
+  aiInsightsPanel.classList.remove('hidden');
+  aiInsightsContent.innerHTML = '<div class="spinner" style="width:24px; height:24px; margin: 0 auto;"></div><p style="text-align:center; color: var(--text-muted)">Gemini is analyzing...</p>';
+  aiInsightsBtn.disabled = true;
+
+  try {
+    const txSummary = globalTransactions.map(tx => `${tx.fecha} | ${tx.comercio} | ${tx.montoStr}`).join('\\n');
+    
+    const promptText = `I have the following credit card transactions from my bank for this year:\n\n${txSummary}\n\nPlease analyze this spending. Give me my top spending categories, total amounts spent per category, and write a 2-sentence summary of my spending habits. Format the response cleanly using HTML tags (like <ul>, <li>, <strong>, <h3>) so I can display it directly in my web app. DO NOT include Markdown backticks or the \`\`\`html prefix.`;
+
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: promptText }] }]
+      })
+    });
+
+    if (!response.ok) {
+      if (response.status === 400 || response.status === 403) {
+        localStorage.removeItem('gemini_api_key');
+        throw new Error("Invalid Gemini API Key or permission denied.");
+      }
+      throw new Error(`Failed to fetch from Gemini (${response.status})`);
+    }
+
+    const data = await response.json();
+    let text = data.candidates?.[0]?.content?.parts?.[0]?.text || "No insights could be generated.";
+    
+    // Strip markdown formatting if Gemini includes it
+    text = text.replace(/```html/g, '').replace(/```/g, '');
+
+    aiInsightsContent.innerHTML = text;
+  } catch (err) {
+    console.error(err);
+    aiInsightsContent.innerHTML = `<p style="color:var(--primary)">Error: ${err.message}</p>`;
+  } finally {
+    aiInsightsBtn.disabled = false;
+  }
+}
+
+aiInsightsBtn?.addEventListener('click', getAIInsights);
+clearKeyBtn?.addEventListener('click', () => {
+   localStorage.removeItem('gemini_api_key');
+   aiInsightsPanel.classList.add('hidden');
+   aiInsightsContent.innerHTML = '';
+   alert('Gemini API Key removed securely from your device.');
 });

@@ -47,7 +47,17 @@
             <h3>Total Spent (YTD)</h3>
             <div id="total-amount" class="total-amount">¢0.00</div>
             <p id="transaction-count" class="transaction-count">0 transactions</p>
+            <button id="ai-insights-btn" class="auth-btn" style="margin-top: 20px; background: #8b5cf6; width: 100%;">✨ Get AI Insights</button>
           </div>
+
+          <div id="ai-insights-panel" class="summary-card hidden" style="border-color: #8b5cf6; text-align: left;">
+            <h3 style="color: #8b5cf6; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between;">
+              Gemini Insights
+              <button id="clear-key-btn" style="background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:12px; text-decoration:underline; font-weight: normal;">Reset API Key</button>
+            </h3>
+            <div id="ai-insights-content" style="font-size: 14px; line-height: 1.6;"></div>
+          </div>
+          
           <ul id="transaction-list" class="transaction-list"></ul>
         </div>
       </main>
