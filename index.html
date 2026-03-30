@@ -3,11 +3,53 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>tmp-app</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#ef4444">
+    <link rel="apple-touch-icon" href="/favicon.svg">
+    <title>ExpenseBAC</title>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   </head>
   <body>
-    <div id="app"></div>
-    <script type="module" src="/src/main.js"></script>
+    <div id="app">
+      <header class="app-header">
+        <div class="header-left">
+          <div class="logo-box">EB</div>
+          <h1>ExpenseBAC</h1>
+        </div>
+        <button id="auth-btn" class="auth-btn">Login</button>
+      </header>
+      
+      <main class="app-content">
+        <div id="welcome-state" class="center-state">
+          <h2>Welcome Data Explorer</h2>
+          <p>Login with your Google account to analyze your BAC expenses for this year.</p>
+        </div>
+
+        <div id="loading" class="center-state hidden">
+          <div class="spinner"></div>
+          <p id="loading-text">Scanning your latest BAC emails...</p>
+        </div>
+        
+        <div id="empty-state" class="center-state hidden">
+          <div class="icon-empty">📭</div>
+          <p>No transactions found for this year.</p>
+        </div>
+
+        <div id="dashboard" class="dashboard hidden">
+          <div class="summary-card">
+            <h3>Total Spent (YTD)</h3>
+            <div id="total-amount" class="total-amount">¢0.00</div>
+            <p id="transaction-count" class="transaction-count">0 transactions</p>
+          </div>
+          <ul id="transaction-list" class="transaction-list"></ul>
+        </div>
+      </main>
+    </div>
+    <script type="module" src="/main.js"></script>
   </body>
 </html>
