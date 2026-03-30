@@ -90,8 +90,8 @@ async function fetchExpenses() {
   showState('loading');
   try {
     const currentYear = new Date().getFullYear();
-    // Search BAC transactional emails for the current year
-    const query = encodeURIComponent(`from:notificacion@notificacionesbaccr.com after:${currentYear}/01/01`);
+    // Broaden the search query to ensure we catch everything
+    const query = encodeURIComponent(`notificacionesbaccr.com`);
     
     console.log("Searching with query:", decodeURIComponent(query));
 
@@ -103,7 +103,14 @@ async function fetchExpenses() {
     const listData = await listRes.json();
     console.log("Found messages:", listData.messages?.length || 0);
     
+    if (!listRes.ok || listData.error) {
+      firstRawEmail = "GMAIL API ERROR: " + JSON.stringify(listData, null, 2);
+      showState('empty');
+      return;
+    }
+
     if (!listData.messages || listData.messages.length === 0) {
+      firstRawEmail = "Query returned 0 results. Query was: " + decodeURIComponent(query);
       showState('empty');
       return;
     }
