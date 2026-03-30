@@ -12,7 +12,10 @@ const logoEl = document.getElementById('logo');
 const welcomeState = document.getElementById('welcome-state');
 const loadingState = document.getElementById('loading');
 const emptyState = document.getElementById('empty-state');
+const debugBtn = document.getElementById('debug-btn');
+const debugArea = document.getElementById('debug-area');
 const dashboard = document.getElementById('dashboard');
+let firstRawEmail = "";
 const transactionList = document.getElementById('transaction-list');
 const totalAmountEl = document.getElementById('total-amount');
 const transactionCountEl = document.getElementById('transaction-count');
@@ -133,6 +136,9 @@ async function fetchExpenses() {
       }
 
       const decodedHtml = decodeBase64URL(bodyData);
+      if (!firstRawEmail) {
+         firstRawEmail = decodedHtml; // Save for debugging
+      }
       
       const tx = extractTransactionDetails(decodedHtml);
       if (tx && tx.montoStr !== "CRC 0.00") {
@@ -262,3 +268,7 @@ window.onload = () => {
 
 authBtn.addEventListener('click', handleAuthClick);
 logoEl.addEventListener('click', () => { window.location.reload(); });
+debugBtn.addEventListener('click', () => { 
+  debugArea.style.display = 'block'; 
+  debugArea.value = firstRawEmail || "No emails were returned from Gmail!"; 
+});
