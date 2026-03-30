@@ -31,6 +31,8 @@ jobs:
       - name: Install dependencies
         run: npm ci
       - name: Build
+        env:
+          VITE_GOOGLE_CLIENT_ID: 858189020905-vcjr8kbo94aqdam1vtferkmarnhhkqnp.apps.googleusercontent.com
         run: npm run build
       - name: Setup Pages
         uses: actions/configure-pages@v4
