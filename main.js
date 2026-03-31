@@ -352,28 +352,31 @@ async function getAIInsights() {
     
     const promptText = `Categorize the following bank transactions into EXACTLY one of these categories: "Restaurants", "Groceries", "Shopping", "Hardware Store", "Subscriptions", "Uber Eats", "Transport", "Others".\\n\\nTransactions:\\n${txData}\\n\\nReturn ONLY a valid JSON array mapping the exact index to the chosen category. Example: [{"index": 0, "category": "Groceries"}, {"index": 1, "category": "Restaurants"}]`;
 
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
-      method: 'POST',
-      mode: 'cors',
-      credentials: 'omit',
-      headers: { 
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
+    const data = await new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`);
+      xhr.setRequestHeader("Content-Type", "application/json");
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+           try {
+             resolve(JSON.parse(xhr.responseText));
+           } catch(e) { reject(e); }
+        } else {
+           if (xhr.status === 400 || xhr.status === 403) {
+             localStorage.removeItem('gemini_api_key');
+             reject(new Error("Invalid Gemini API Key or permission denied."));
+           } else {
+             reject(new Error(`Failed to fetch from Gemini (${xhr.status})`));
+           }
+        }
+      };
+      xhr.onerror = () => reject(new Error("Load failed. Your iOS system ad-blocker or VPN is strictly blocking Google AI in PWA mode."));
+      xhr.send(JSON.stringify({
         contents: [{ parts: [{ text: promptText }] }],
         generationConfig: { responseMimeType: "application/json" }
-      })
+      }));
     });
 
-    if (!response.ok) {
-      if (response.status === 400 || response.status === 403) {
-        localStorage.removeItem('gemini_api_key');
-        throw new Error("Invalid Gemini API Key or permission denied.");
-      }
-      throw new Error(`Failed to fetch from Gemini (${response.status})`);
-    }
-
-    const data = await response.json();
     let jsonText = data.candidates?.[0]?.content?.parts?.[0]?.text || "[]";
     const mappedCategories = JSON.parse(jsonText);
     
