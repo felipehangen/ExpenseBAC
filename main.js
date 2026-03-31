@@ -322,15 +322,27 @@ debugBtn?.addEventListener('click', () => {
 const analyzeBtn = document.getElementById('analyze-btn');
 const aiInsightsContent = document.getElementById('ai-insights-content');
 const clearKeyBtn = document.getElementById('clear-key-btn');
-const aiInsightsPanel = document.getElementById('ai-insights-panel');
+const apiKeyPanel = document.getElementById('api-key-panel');
+const geminiKeyInput = document.getElementById('gemini-key-input');
+const saveKeyBtn = document.getElementById('save-key-btn');
+
+saveKeyBtn?.addEventListener('click', () => {
+   const val = geminiKeyInput.value.trim();
+   if (val) {
+      localStorage.setItem('gemini_api_key', val);
+      apiKeyPanel.style.display = 'none';
+      getAIInsights(); // auto-resume
+   }
+});
 
 async function getAIInsights() {
   let apiKey = localStorage.getItem('gemini_api_key');
   if (!apiKey) {
-    apiKey = prompt("Please securely paste your Gemini API Key (from aistudio.google.com/app/apikey). It will only be stored locally on your device.");
-    if (!apiKey) return;
-    localStorage.setItem('gemini_api_key', apiKey.trim());
+    apiKeyPanel.style.display = 'block';
+    aiInsightsContent.innerHTML = '';
+    return;
   }
+  apiKeyPanel.style.display = 'none';
 
   aiInsightsContent.innerHTML = '<div class="spinner" style="width:24px; height:24px; margin: 0 auto;"></div><p style="text-align:center; color: var(--text-muted)">Gemini is analyzing and categorizing...</p>';
   analyzeBtn.disabled = true;
@@ -464,7 +476,6 @@ async function getAIInsights() {
 analyzeBtn?.addEventListener('click', getAIInsights);
 clearKeyBtn?.addEventListener('click', () => {
    localStorage.removeItem('gemini_api_key');
-   aiInsightsPanel.classList.add('hidden');
    aiInsightsContent.innerHTML = '';
-   alert('Gemini API Key removed securely from your device.');
+   apiKeyPanel.style.display = 'block';
 });

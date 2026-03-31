@@ -53,6 +53,15 @@
             <h3 style="color: #8b5cf6; margin-bottom: 8px;">Full Category Analysis (AI)</h3>
             <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;">Automatically categorize all your expenses into Restaurants, Groceries, Shopping, etc. and see exactly where your money went.</p>
             
+            <div id="api-key-panel" style="margin-bottom: 16px; padding: 16px; border: 1px dashed #f59e0b; border-radius: 8px; display: none;">
+              <h4 style="color: #f59e0b; margin-bottom: 8px; font-size: 14px;">🔑 Gemini API Key Required</h4>
+              <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 12px;">iOS blocks popup prompts. Please paste your free Gemini API Key below (from <a href="https://aistudio.google.com/app/apikey" target="_blank" style="color:#f59e0b">Google AI Studio</a>). It stays locally on your phone.</p>
+              <div style="display: flex; gap: 8px;">
+                 <input type="password" id="gemini-key-input" placeholder="Paste key here..." style="flex:1; padding: 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-color); color: var(--text-main); font-size: 14px;" />
+                 <button id="save-key-btn" class="auth-btn" style="background: #f59e0b; padding: 8px 12px; font-size: 13px;">Save</button>
+              </div>
+            </div>
+
             <button id="analyze-btn" class="auth-btn" style="background: #8b5cf6; width: 100%;">✨ Generate Deep Analysis</button>
             
             <div id="ai-insights-content" style="margin-top: 20px; font-size: 14px; line-height: 1.6;"></div>
