@@ -134,13 +134,18 @@ async function fetchExpenses() {
       return;
     }
 
-    // 2. Fetch full message details in batches
-    const transactions = [];
+    // 2. Fetch full message details in batches (only those not cached!)
+    let cachedTxs = {};
+    try {
+        cachedTxs = JSON.parse(localStorage.getItem('bac_transactions_cache') || '{}');
+    } catch(e) { cachedTxs = {}; }
+
+    const messagesToFetch = allMessages.filter(m => !cachedTxs[m.id]);
     const chunkSize = 20;
 
-    for (let i = 0; i < allMessages.length; i += chunkSize) {
-      document.getElementById('loading-text').innerText = `Parsing emails (${i}/${allMessages.length})...`;
-      const chunk = allMessages.slice(i, i + chunkSize);
+    for (let i = 0; i < messagesToFetch.length; i += chunkSize) {
+      document.getElementById('loading-text').innerText = `Parsing new emails (${i}/${messagesToFetch.length})...`;
+      const chunk = messagesToFetch.slice(i, i + chunkSize);
       
       const messagePromises = chunk.map(msg => 
         fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${msg.id}`, {
@@ -172,14 +177,25 @@ async function fetchExpenses() {
            firstRawEmail = decodedHtml; 
         }
         
-        const tx = extractTransactionDetails(decodedHtml);
-        if (tx && tx.montoStr !== "CRC 0.00") {
-          transactions.push(tx);
+        const tx = extractTransactionDetails(decodedHtml, msg.id);
+        if (tx && tx.amountNum > 0) {
+          cachedTxs[msg.id] = tx; // Add to cache dictionary
         }
       });
     }
 
-    console.log("Successfully parsed transactions:", transactions.length);
+    // Save cache
+    localStorage.setItem('bac_transactions_cache', JSON.stringify(cachedTxs));
+
+    // Combine cached and freshly parsed transactions matching the current list of queried messages
+    const transactions = [];
+    allMessages.forEach(m => {
+       if (cachedTxs[m.id]) {
+         transactions.push(cachedTxs[m.id]);
+       }
+    });
+
+    console.log("Successfully loaded transactions:", transactions.length);
 
     if (transactions.length === 0) {
       showState('empty');
@@ -203,7 +219,7 @@ function decodeBase64URL(str) {
   return decodeURIComponent(escape(window.atob(str)));
 }
 
-function extractTransactionDetails(htmlText) {
+function extractTransactionDetails(htmlText, msgId) {
   if (!htmlText) return null;
   
   // Clean HTML to make regex easier (remove newlines inside tags if any)
@@ -217,7 +233,7 @@ function extractTransactionDetails(htmlText) {
         return match[1].replace(/<[^>]+>/g, '').trim();
     }
     
-    // Plain text fallback (e.g., Monto: CRC 3,250.00)
+    // Plain text fallback
     const plainRegex = new RegExp(`${fieldName}\\s*(.*?)(?:\\n|<br|\\t|$)`, 'is');
     const plainMatch = cleanText.match(plainRegex);
     if (plainMatch && plainMatch[1]) {
@@ -227,20 +243,36 @@ function extractTransactionDetails(htmlText) {
     return null;
   };
 
-  const comercio = extractField('Comercio:') || extractField('Comercio') || "Unknown Merchant";
+  const comercioRaw = extractField('Comercio:') || extractField('Comercio') || "Unknown Merchant";
+  
+  // Filter out false positive transactions that are just "Muchas gracias"
+  if (!comercioRaw || comercioRaw.toLowerCase().includes('muchas gracias') || comercioRaw === "Unknown Merchant") {
+      return null;
+  }
+  
+  const pais = extractField('País:') || extractField('Pais:') || extractField('País') || extractField('Pais') || "CR";
+  const isForeign = !pais.toUpperCase().includes('COSTA RICA') && !pais.toUpperCase().includes('CR');
+  const comercio = comercioRaw + (isForeign ? " 🌎" : "");
+
   const fecha = extractField('Fecha:') || extractField('Fecha') || "";
   const tipo = extractField('Tipo de Transacci[oó]n:') || "COMPRA";
-  const montoStr = extractField('Monto:') || extractField('Monto') || "CRC 0.00";
+  const montoStrRaw = extractField('Monto:') || extractField('Monto') || "CRC 0.00";
   
-  
-  // Clean amount string for number conversion e.g. "CRC 3,250.00" -> 3250.00
   let amountNum = 0;
-  const numMatch = montoStr.match(/[\d,]+(?:\.\d+)?/);
+  const numMatch = montoStrRaw.match(/[\d,]+(?:\.\d+)?/);
   if (numMatch) {
     amountNum = parseFloat(numMatch[0].replace(/,/g, ''));
   }
+  
+  // Convert CRC to USD
+  if (montoStrRaw.includes('CRC') || montoStrRaw.includes('¢')) {
+     amountNum = amountNum / 505; // Standard approx exchange rate
+  }
+  
+  amountNum = Math.round(amountNum); // No decimals requested
+  const montoStr = "$" + amountNum;
 
-  return { comercio, fecha, tipo, montoStr, amountNum };
+  return { id: msgId, comercio, fecha, tipo, montoStr, amountNum };
 }
 
 function renderDashboard(transactions) {
@@ -253,13 +285,10 @@ function renderDashboard(transactions) {
   const total = transactions.reduce((sum, tx) => sum + tx.amountNum, 0);
   
   // Find prevalent currency strictly from the first valid string
-  let currency = "CRC";
-  if (transactions.length > 0 && transactions[0].montoStr.includes('USD')) {
-      currency = "USD";
-  }
+  let currency = "USD";
 
   // Set Summary
-  totalAmountEl.textContent = `${currency} ${total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  totalAmountEl.textContent = `${currency} ${total.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
   transactionCountEl.textContent = `${transactions.length} transactions`;
 
   // We are not rendering the global transaction list anymore to save screen space and focus on category analysis.
@@ -385,7 +414,7 @@ async function getAIInsights() {
          <details style="background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-md); margin-bottom:12px; padding:12px; cursor:pointer;" open>
             <summary style="font-weight:700; display:flex; justify-content:space-between; outline:none; color:var(--text-main); font-size: 16px;">
               <span>${cat}</span>
-              <span>¢${group.total.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</span>
+              <span>$${group.total.toLocaleString(undefined, {minimumFractionDigits:0, maximumFractionDigits:0})}</span>
             </summary>
             <div style="margin-top:12px; padding-top:12px; border-top:1px dashed var(--border);">
          `;
@@ -396,7 +425,7 @@ async function getAIInsights() {
               <details style="margin-bottom:8px; margin-left:8px;">
                 <summary style="font-weight:600; display:flex; justify-content:space-between; outline:none; color:var(--primary); font-size:14px; margin-bottom:6px;">
                   <span>${mStr}</span>
-                  <span>¢${mData.total.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</span>
+                  <span>$${mData.total.toLocaleString(undefined, {minimumFractionDigits:0, maximumFractionDigits:0})}</span>
                 </summary>
                 <div style="margin-left: 12px; margin-bottom: 12px;">
                   ${mData.txs.map(t => `
