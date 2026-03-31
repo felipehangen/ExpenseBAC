@@ -342,6 +342,7 @@ async function getAIInsights() {
 
     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
       method: 'POST',
+      mode: 'cors',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         contents: [{ parts: [{ text: promptText }] }],
@@ -450,7 +451,11 @@ async function getAIInsights() {
     aiInsightsContent.innerHTML = html;
   } catch (err) {
     console.error(err);
-    aiInsightsContent.innerHTML = `<p style="color:var(--primary)">Error: ${err.message}</p>`;
+    let extraHelp = "";
+    if (err.message.includes("Load failed") || err.message.includes("Failed to fetch")) {
+       extraHelp = "<br><br><small style='color:var(--text-muted); font-weight:normal;'><b>Note for iOS users:</b> 'Load failed' means Safari's built-in tracking prevention, an ad-blocker (like AdGuard), or a VPN is actively blocking the app from connecting to Google's AI API. Try turning off 'Advanced Tracking and Fingerprinting Protection' in Safari Settings or disabling content blockers for this page.</small>";
+    }
+    aiInsightsContent.innerHTML = `<p style="color:var(--primary); font-weight:600;">Error: ${err.message}${extraHelp}</p>`;
   } finally {
     analyzeBtn.disabled = false;
   }
