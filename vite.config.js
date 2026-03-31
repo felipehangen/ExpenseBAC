@@ -7,6 +7,16 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       injectRegister: 'auto',
+      workbox: {
+        // Never let the Service Worker intercept external API calls.
+        // This is the fix for iOS PWA "Load failed" on googleapis.com.
+        runtimeCaching: [
+          {
+            urlPattern: ({ url }) => url.hostname.includes('googleapis.com') || url.hostname.includes('google.com'),
+            handler: 'NetworkOnly',
+          }
+        ]
+      },
       manifest: {
         name: 'ExpenseBAC',
         short_name: 'ExpenseBAC',
