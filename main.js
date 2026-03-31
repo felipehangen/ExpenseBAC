@@ -355,7 +355,8 @@ async function getAIInsights() {
     const data = await new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       xhr.open("POST", `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`);
-      xhr.setRequestHeader("Content-Type", "application/json");
+      // text/plain prevents the browser from making a CORS preflight (OPTIONS) request, which iOS often blocks in PWAs
+      xhr.setRequestHeader("Content-Type", "text/plain");
       xhr.onload = () => {
         if (xhr.status >= 200 && xhr.status < 300) {
            try {
